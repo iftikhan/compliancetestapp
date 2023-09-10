@@ -1,0 +1,427 @@
+#region in which aws resources will get deployed
+variable "region" {
+    type = string
+    default = "<aws-region>"   #usually eu-central-1
+}
+
+#set of default tags applied to resources
+#change, add or delete key-value pairs according to your needs
+variable "tags_default" {
+  type = map(string)                              #with (string) is the latest format support from Terraform v1.1.9
+  default = {
+    "Application" = "Zontal"                      #application name
+    "Project" = "<customer-project>"              #project name
+    "BusinessFunction" = "<business-function>"    #customer business function
+    "Environment" = "<environment-tag>"           #environment e.g. Deplyoment
+    "ContactEmail" = "<contact-email>"            #contact email address
+    "OwnerEmail" = "<owner-email>"                #customer owner email address
+    "Domain" = "platform"                         #should be always "platform"
+    "Purpose" = "<purpose>"                       #purpose
+    "OS" = "Linux"                                #operating system
+    "AvailabilityGroup" = "<availability>"        #availability grouo
+  }
+}
+
+#environment name
+variable "envname" {
+    type = string
+    default = "<environment-name>"         #only lowercase alphanumeric characters, hyphens, underscores, periods, and spaces allowed
+}
+variable "envdomain" {
+    type = string
+    default = "platform" #should be always "platform"
+}
+
+#aws vpc id
+variable "vpc_id" {
+    type = string
+    default = "<vpc-id>"                    #e.g. "vpc-12345678910111213"
+}
+
+#list of subnet ids in "" seperated by ','
+#this list has order, make sure the first 3 subnets are private subnets, and will be best if they cover all availability zone under region
+variable "subnets" {
+    type = list
+    default = [<subnets-list>]              #e.g.  ["subnet-12345678910111213","subnet-13121110987654321","subnet-abcdefghijklm"]
+}
+
+#cidr range of the vpc
+variable "vpc_cidr_block" {
+    type = string
+    default = "<vpc-cidr-block>"
+}
+
+#key pair generated as preparation step
+variable "keypair_name" {
+    type = string
+    default = "<keypair-name>"
+}
+
+#cidr range of the subnet in which the terraform machine was deployed
+variable "terraform_machine_cidr_range" {
+    type = string
+    default = "<terraform-subnet-cidr-range>"
+}
+
+#number of worker nodes in the eks cluster
+variable "eks_application_node_instance_count" {
+    type = number
+    default = <eks-node-instance-count>     #e.g. 4 or 10
+}
+
+#instance type of the worker nodes in the eks cluster
+variable "eks_application_instance_type" {
+    type = string
+    default = "m5.2xlarge" #this ec2 instance type only for internal normal AWS env
+}
+
+#list of indices of the subnets from the subnets variables that the eks cluster will deploy its worker nodes to
+#number is fitting to the list index of variable "subnets", the 1st item index is 0, the 2nd is 1, and so on
+#make sure the chosen subnets are all private subnets, and will be best if they cover all availability zone under region
+variable "eks_node_group_subnets" {
+    type = list
+    default = [<list-of-integers/indices>]     #e.g. [0,1,2] vpc endpoint or internet access is required
+}
+
+#list of indices of the subnets from the subnets variables that the serverless will deploy its services to
+variable "serverless_node_group_subnets" {
+    type = list
+    default = [<list-of-integers/indices>]     #e.g. [0,1,2]
+}
+
+#instance type of the manager ec2 instance
+variable "ec2_manager_instance_type" {
+    type = string
+    default = "m5.xlarge"
+}
+
+#instance type of the elasticsearch ec2 instances
+variable "ec2_elasticsearch_instance_type" {
+    type = string
+    default = "m5.xlarge"
+}
+
+#list of the elasticsearch ec2 instances,
+#number of entries depicts the number of elastricsearch ec2 instances that get created,
+#the entries are used as keys in some other map variables like ec2_subnet_map, so make sure they are aligned
+variable "ec2_elasticsearch_instances" {
+    type = list
+    default = ["es1","es2","es3"]
+}
+
+#mapping of the ec2 instances to subnet indices from subnets variable
+#keys are taken from the ec2_elasticsearch_instances variabl, except of manager
+#manager key should not be renamed
+#number is fitting to the list index of variable "subnets", the 1st item index is 0, the 2nd is 1, and so on
+#make sure the chosen subnets are all private subnets, and will be best if they cover all availability zone under region
+variable "ec2_subnet_map" {
+  type = map
+  default = {
+    "manager" = 0   #required internet access for this subnet
+    "es1"  = 0
+    "es2"  = 1
+    "es3"  = 2
+  }
+}
+
+#mapping volume sizes for ebs volumes to ec2 instances and eks [in gibigyte]
+#keys are taken from the ec2_elasticsearch_instances variabl, except of manager and eks_application_nodes
+#manager and eks_application_nodes key should not be renamed
+#eks_application_nodes key applies to the launch template of the eks nodegroup
+variable "ebs_volume_size_map" {
+  type = map
+  default = {
+    "manager" = "100"
+    "es1"  = "300"
+    "es2"  = "300"
+    "es3"  = "300"
+    "eks_application_nodes" = "100"
+	"eks_mongodb_nodes" = "300"     #used in the launch template of the mongodb eks nodegroup
+  }
+}
+
+#mapping volume type for ebs volumes to ec2 instances and eks [in gibigyte]
+#keys are taken from the ec2_elasticsearch_instances variabl, except of manager and eks_application_nodes
+#manager and eks_application_nodes key should not be renamed
+#eks_application_nodes key applies to the eks node launch template
+#mapping volume types for ebs volumes to ec2 instances and eks
+variable "ebs_volume_type_map" {
+  type = map
+  default = {
+    "manager" = "gp3"
+    "es1"  = "gp3"
+    "es2"  = "gp3"
+    "es3"  = "gp3"
+    "eks_application_nodes" = "gp3"
+	"eks_mongodb_nodes" = "gp3"           #used in the launch template of the mongodb eks nodegroup
+  }
+}
+
+#absolute directory where the efs should be mounted on the manager and eks worker nodes
+variable "efs_mount_point" {
+    type = string
+    default = "/opt/space/storage"
+}
+
+#list of indizes from the subnet list, for each corresponding subent an efs target mount will be created
+#number is fitting to the list index of variable "subnets", the 1st item index is 0, the 2nd is 1, and so on
+#make sure the chosen subnets are all private subnets, and will be best if they cover all availability zone under region
+#Only one subnet from each availability zone
+variable "efs_mount_target_subnets" {
+    type = list
+    default = [<subnet-index-list>]     #e.g. [0,1,2]
+}
+
+#nslookup name of zontal
+variable "full_dns_lookup" {
+    type = string
+    default = "<dn-lookup>"
+}
+
+#if true, rds gets created
+variable "enable_rds" {
+  type    = bool
+  default = true
+}
+
+#instance_type of the rds
+variable "rds_instance_type" {
+    type = string
+    default = "db.t3.medium"
+}
+
+#set password of the created rds
+variable "rds_password" {
+    type = string
+    default = "<rds-password>" #e.g. "zontalpwd" this value need to be matched with ansible varibale <space_database_password>
+}
+
+#if true, enable_ebs_encryption_by_default can be set
+variable "enable_keys_module" {
+  type    = bool
+  default = false
+}
+
+#sets enable_ebs_encryption_by_default to the corresponding value
+variable "enable_ebs_encryption_by_default" {
+  type    = bool
+  default = false
+}
+
+#hosted zone, that will be part of the hostnames of the manager and elasticsearch nodes
+variable "hostedzone" {
+    type = string
+    default = "<hostedzone>"    #e.g. zontal.link
+}
+
+#Role ARN which is assigned to the user which want's to access EKS in the AWS Web Console
+variable "eks_console_role_arn" {
+    type = string
+    default = "<eks-console-role-arn>"    #Pay attention, DO NOT directly copy full ARN, because it contains "aws-reserved/sso.amazonaws.com/eu-central-1" in the middle, should remove these path, only reserve the role id. For example: arn:aws:iam::521310437492:role/AWSReservedSSO_FullAdminPermissionSet_630dd87d4c3febc7, (if directly copy full ARN it would be arn:aws:iam::521310437492:role/aws-reserved/sso.amazonaws.com/eu-central-1/AWSReservedSSO_FullAdminPermissionSet_630dd87d4c3febc7 which will cause issue after deployment, can't search eks node from AWS console)
+}
+
+#EKS version 
+variable "eks_cluster_version" {
+    type = string
+    default = "1.24"
+}
+
+#the value should be a random value, with minimum length of 40 characters
+variable "access_secret" {
+    type = string
+    default = "<access_secret>"
+}
+
+#location of the ssh private key for manager, elasticsearch and eks nodes
+variable "ssh_private_key_path" {
+    type = string
+    default = "~/.ssh/<keypair_full_name>"
+}
+
+#the user deplyoment on manager server
+variable "deployment_user" {
+    type = string
+    default = "centos"
+}
+
+#alb controller image location from ecr
+variable "alb_registry_image" {
+    type = string
+    default = "<alb-registry-image>"       #521310437492.dkr.ecr.eu-central-1.amazonaws.com/zontal/amazon/aws-alb-ingress-controller
+}
+
+#the AWS application load balencer controller image tag
+variable "alb_controller_image_tag" {
+    type = string
+    default = "v2.4.3"                    #for now must be "v2.4.3"
+}
+
+#the alb chart version
+variable "alb_chart_version" {
+    type = string
+    default = "1.4.4"                     #for now must be "1.4.4" which app version is "v2.4.3"
+}
+
+variable "s3prefix" {
+    type = string
+    default = "<s3_prefix>"                #prefix name for alb access log, it defined in ingress rule as well
+}
+
+#the ECR repository name, normally will set as "zontal", it's up to customer requirement if need to set specific repository name
+variable "ecr_repository_name" {
+    type = string
+    default = "<ecr-repository-name>"      #normally set as "zontal"
+}
+
+#the "delete on termination" behavior of root EBS volume for ES and manager nodes
+variable "ebs_delete_on_termination" {
+    type = bool
+    default = true      #normally set as "true" for internal and dev environment
+}
+
+variable "efs_shared_performance_mode" {
+    type = string
+    default = "generalPurpose"
+}
+
+variable "efs_mongo_performance_mode" {
+    type = string
+    default = "maxIO"
+}
+
+#absolute directory where the efs for mongo should be mounted
+variable "efs_mongo_mount_point" {
+    type = string
+    default = "/opt/space/mongo-storage"
+}
+
+variable "efs_shared_throughput_mode" {
+    type = string
+    default = "bursting"
+}
+
+variable "efs_shared_throughput_in_mibps" {
+    type = number
+    default = 0
+}
+
+variable "efs_mongo_throughput_mode" {
+    type = string
+    default = "bursting"
+}
+
+variable "efs_mongo_throughput_in_mibps" {
+    type = number
+    default = 0
+}
+
+
+
+variable "eks_mongodb_node_instance_type" {
+    type = string
+    default = "m6i.2xlarge"
+}
+
+variable "eks_mongodb_node_instance_count" {
+    type = number
+    default = 2
+}
+
+variable "enable_datahub" {
+  type    = bool
+  default = true
+}
+
+
+#listof indices from the subnet list, which is used in subnet_group for RDS will be created
+#one subnet of each availability zone is recommended
+variable "rds_subnets" {
+    type = list
+    default = [<subnet-index-list>]     #e.g. [0,1,2]
+}
+
+#set backup retention day for RDS ( days to keep the daily backup before deleting automatically)
+variable "rds_backup_retention_period" {
+    type = number
+    default = 0  #set to 0 in internal environment to turn this off. Recommended : 7 days for customers.
+}
+
+# true for fresh installation, false for update from an older version
+variable "is_fresh_installation" {
+  type    = bool
+  default = true
+}
+
+# artifacts bucket from where get ansible installation package
+variable "s3_artifacts_bucket" {
+    type = string
+    default = "<s3_artifacts_bucket>"
+}
+
+# zontal release version
+variable "zontal_release_version" {
+  type = string
+  default = "<zontal_release_version>"  # this variable decide from which S3 path to download the space-deployment playbooks, e.g. set to "integration" or "2.4.1", terraform script will get space-deployment zip file from s3://{s3_artifacts_bucket}/zontal/deployment/space-deployment/{zontal_release_version}/space-deployment-{zontal_release_version}.tar.gz
+}
+
+# codeartifact default values
+variable "domain_name" {
+  type    = string
+  default = "zontal-artifacts"
+}
+
+variable "repository_pypi_name" {
+  type    = string
+  default = "pypi"
+}
+
+variable "repository_pypi_description" {
+  type    = string
+  default = "All python packages developed by ZONTAL"
+}
+
+# VPC endpoint is used to privately connect to supported AWS services without public IP
+# true for creating vpc endpoint, false for NOT creating vpc endpoint
+variable "enable_vpc_endpoint" {
+  type    = bool
+  default = false
+}
+
+# Only available when above variable enable_vpc_endpoint is true
+# fill it out based on requirement which resources is using VPC endpoint
+variable "vpc_endpoint_list" {
+  type = map(any)
+  default = {
+    # resource_type = "endpoint_type" # endpoint type supports 'Gateway' and 'Interface'
+    # s3       = "Gateway"
+    dynamodb             = "Gateway"
+    logs                 = "Interface"
+    # kms                  = "Interface"
+    # ec2messages          = "Interface"
+    # ssmmessages          = "Interface"
+    # ssm                  = "Interface"
+    # elasticfilesystem    = "Interface"
+    # autoscaling          = "Interface"
+    # elasticloadbalancing = "Interface"
+    # ec2                  = "Interface"
+    # sqs                  = "Interface"
+    # sns                  = "Interface"
+    # sts                  = "Interface"
+    # "ecr.dkr"            = "Interface"
+    # "ecr.api"            = "Interface"
+  }
+}
+
+# the list of top 3 private route tables in corresponding subnets which are used to create VPC endpoint
+variable "route_tables" {
+    type = list
+    default = [<route_table_ids>]  # e.g. ["rtb-08c0726e327c489a0","rtb-04660195df5e46a84","rtb-00219e60a4488a98e"]
+}
+
+# infrastructure deployment for internal testing or external customer
+# true for internal deployment to add tag "Stoppable: always" in EC2
+# false for external customer deployment without tag "Stoppable: always" in EC2
+variable "internal_deployment" {
+  type = bool
+  default = true
+}
